@@ -36,6 +36,11 @@ class KISApi:
         if self._access_token and self._token_expires_at and datetime.now() < self._token_expires_at:
             return self._access_token
 
+        if not self.config.app_key or not self.config.app_secret:
+            raise RuntimeError(
+                "API 키가 설정되지 않았습니다. .env 파일에 KIS_APP_KEY와 KIS_APP_SECRET을 입력하세요."
+            )
+
         url = f"{self.base_url}/oauth2/tokenP"
         payload = {
             "grant_type": "client_credentials",
@@ -43,6 +48,14 @@ class KISApi:
             "appsecret": self.config.app_secret,
         }
         resp = self._session.post(url, json=payload, timeout=10)
+        if resp.status_code == 403:
+            logger.error(
+                "토큰 발급 실패 (403). 확인사항:\n"
+                "  1) .env의 KIS_APP_KEY / KIS_APP_SECRET 값이 올바른지\n"
+                "  2) 모의투자 앱키로 모의투자 URL을 사용하고 있는지\n"
+                "  3) 한국투자증권 API 포털에서 앱이 승인 상태인지"
+            )
+            resp.raise_for_status()
         resp.raise_for_status()
         data = resp.json()
 

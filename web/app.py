@@ -74,9 +74,9 @@ def index():
 
 
 @app.route("/status")
-def status_redirect():
-    """이전 경로 호환용 리다이렉트."""
-    return redirect("/api/status")
+def status_simple():
+    """간단 상태 응답 (브라우저 확장 등의 폴링 대응)."""
+    return jsonify({"status": "ok", "bot_running": _bot_running})
 
 
 _auth_error_logged = False
