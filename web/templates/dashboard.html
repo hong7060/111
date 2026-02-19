@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 주식 자동매매 봇</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', -apple-system, sans-serif;
+            background: #0f1923;
+            color: #e0e6ed;
+            min-height: 100vh;
+        }
+
+        /* 헤더 */
+        .header {
+            background: linear-gradient(135deg, #1a2332, #243447);
+            padding: 20px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #2d3e50;
+        }
+        .header h1 {
+            font-size: 22px;
+            color: #4fc3f7;
+            font-weight: 600;
+        }
+        .header .mode-badge {
+            background: #1b5e20;
+            color: #a5d6a7;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 500;
+        }
+        .header .mode-badge.real { background: #b71c1c; color: #ef9a9a; }
+
+        /* 컨트롤 패널 */
+        .controls {
+            display: flex;
+            gap: 10px;
+            padding: 16px 30px;
+            background: #162029;
+            border-bottom: 1px solid #2d3e50;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        .btn {
+            padding: 10px 22px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+        .btn:hover { transform: translateY(-1px); filter: brightness(1.1); }
+        .btn:active { transform: translateY(0); }
+        .btn-start { background: #2e7d32; color: #fff; }
+        .btn-stop { background: #c62828; color: #fff; }
+        .btn-analyze { background: #1565c0; color: #fff; }
+        .btn-once { background: #6a1b9a; color: #fff; }
+        .btn-refresh { background: #37474f; color: #cfd8dc; }
+        .btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+        .controls label {
+            display: flex; align-items: center; gap: 6px;
+            color: #90a4ae; font-size: 13px; margin-left: 10px;
+        }
+        .controls input[type="checkbox"] { accent-color: #4fc3f7; }
+        .bot-status {
+            margin-left: auto;
+            display: flex; align-items: center; gap: 8px;
+            font-size: 14px; font-weight: 500;
+        }
+        .status-dot {
+            width: 10px; height: 10px; border-radius: 50%;
+            background: #616161;
+        }
+        .status-dot.running { background: #4caf50; animation: pulse 1.5s infinite; }
+        @keyframes pulse {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(76,175,80,0.4); }
+            50% { box-shadow: 0 0 0 6px rgba(76,175,80,0); }
+        }
+
+        /* 메인 레이아웃 */
+        .container { padding: 20px 30px; }
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
+        .grid-3 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 20px; }
+
+        /* 카드 */
+        .card {
+            background: #1a2a3a;
+            border-radius: 12px;
+            border: 1px solid #2d3e50;
+            overflow: hidden;
+        }
+        .card-header {
+            padding: 14px 18px;
+            font-size: 14px;
+            font-weight: 600;
+            color: #90a4ae;
+            border-bottom: 1px solid #2d3e50;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .card-body { padding: 18px; }
+
+        /* 통계 카드 */
+        .stat-card {
+            background: #1a2a3a;
+            border-radius: 12px;
+            border: 1px solid #2d3e50;
+            padding: 18px;
+            text-align: center;
+        }
+        .stat-card .label { font-size: 12px; color: #78909c; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .stat-card .value { font-size: 26px; font-weight: 700; }
+        .stat-card .sub { font-size: 12px; color: #78909c; margin-top: 4px; }
+        .positive { color: #ef5350; }
+        .negative { color: #42a5f5; }
+        .neutral { color: #90a4ae; }
+
+        /* 테이블 */
+        table { width: 100%; border-collapse: collapse; }
+        thead th {
+            text-align: left; padding: 10px 14px; font-size: 12px;
+            color: #78909c; border-bottom: 1px solid #2d3e50;
+            text-transform: uppercase; letter-spacing: 0.5px;
+        }
+        tbody td {
+            padding: 10px 14px; font-size: 13px;
+            border-bottom: 1px solid rgba(45,62,80,0.5);
+        }
+        tbody tr:hover { background: rgba(79,195,247,0.05); }
+
+        /* 신호 배지 */
+        .signal-badge {
+            display: inline-block; padding: 3px 10px; border-radius: 12px;
+            font-size: 11px; font-weight: 600;
+        }
+        .signal-STRONG_BUY { background: #b71c1c; color: #ffcdd2; }
+        .signal-BUY { background: #c62828; color: #ffcdd2; }
+        .signal-HOLD { background: #37474f; color: #b0bec5; }
+        .signal-SELL { background: #0d47a1; color: #bbdefb; }
+        .signal-STRONG_SELL { background: #1a237e; color: #c5cae9; }
+
+        /* 로그 */
+        .log-area {
+            background: #0d1520;
+            border-radius: 8px;
+            padding: 14px;
+            max-height: 300px;
+            overflow-y: auto;
+            font-family: 'Consolas', 'Courier New', monospace;
+            font-size: 12px;
+            line-height: 1.6;
+        }
+        .log-area .log-line { color: #78909c; }
+        .log-area .log-line.info { color: #4fc3f7; }
+        .log-area .log-line.warn { color: #ffa726; }
+        .log-area .log-line.error { color: #ef5350; }
+        .log-area .log-line.trade { color: #66bb6a; }
+
+        /* 로딩 스피너 */
+        .spinner {
+            display: none; width: 20px; height: 20px;
+            border: 2px solid #2d3e50; border-top: 2px solid #4fc3f7;
+            border-radius: 50%; animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .loading .spinner { display: inline-block; }
+
+        /* 반응형 */
+        @media (max-width: 900px) {
+            .grid-2 { grid-template-columns: 1fr; }
+            .grid-3 { grid-template-columns: repeat(2, 1fr); }
+            .controls { gap: 8px; }
+        }
+        @media (max-width: 600px) {
+            .grid-3 { grid-template-columns: 1fr; }
+            .header { flex-direction: column; gap: 10px; }
+        }
+
+        /* 신호 막대그래프 */
+        .confidence-bar {
+            width: 100%; height: 6px; background: #2d3e50;
+            border-radius: 3px; overflow: hidden;
+        }
+        .confidence-bar .fill { height: 100%; border-radius: 3px; transition: width 0.3s; }
+    </style>
+</head>
+<body>
+
+<!-- 헤더 -->
+<div class="header">
+    <h1>AI 주식 자동매매 봇</h1>
+    <span class="mode-badge" id="modeBadge">--</span>
+</div>
+
+<!-- 컨트롤 패널 -->
+<div class="controls">
+    <button class="btn btn-start" id="btnStart" onclick="startBot()">봇 시작</button>
+    <button class="btn btn-stop" id="btnStop" onclick="stopBot()" disabled>봇 중지</button>
+    <button class="btn btn-analyze" id="btnAnalyze" onclick="runAnalysis()">종목 분석</button>
+    <button class="btn btn-once" id="btnOnce" onclick="runOnce()">1회 매매</button>
+    <button class="btn btn-refresh" onclick="refreshAll()">새로고침</button>
+    <label>
+        <input type="checkbox" id="chkForce"> 장외시간 강제실행
+    </label>
+    <div class="bot-status">
+        <div class="status-dot" id="statusDot"></div>
+        <span id="statusText">중지됨</span>
+        <div class="spinner" id="spinner"></div>
+    </div>
+</div>
+
+<div class="container">
+    <!-- 통계 카드 -->
+    <div class="grid-3">
+        <div class="stat-card">
+            <div class="label">예수금</div>
+            <div class="value" id="statCash">--</div>
+        </div>
+        <div class="stat-card">
+            <div class="label">총 평가금액</div>
+            <div class="value" id="statTotalEval">--</div>
+        </div>
+        <div class="stat-card">
+            <div class="label">총 손익</div>
+            <div class="value" id="statProfit">--</div>
+        </div>
+        <div class="stat-card">
+            <div class="label">수익률</div>
+            <div class="value" id="statProfitRate">--</div>
+        </div>
+    </div>
+
+    <div class="grid-2">
+        <!-- 보유 종목 -->
+        <div class="card">
+            <div class="card-header">
+                보유 종목
+                <span id="holdingCount" style="font-size:12px; color:#4fc3f7;">0종목</span>
+            </div>
+            <div class="card-body" style="padding:0; overflow-x:auto;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>종목</th>
+                            <th style="text-align:right">수량</th>
+                            <th style="text-align:right">평균가</th>
+                            <th style="text-align:right">현재가</th>
+                            <th style="text-align:right">수익률</th>
+                        </tr>
+                    </thead>
+                    <tbody id="holdingsTable">
+                        <tr><td colspan="5" style="text-align:center; color:#546e7a;">로딩 중...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- AI 분석 결과 -->
+        <div class="card">
+            <div class="card-header">
+                AI 분석 신호
+                <span id="signalTime" style="font-size:11px; color:#546e7a;"></span>
+            </div>
+            <div class="card-body" style="padding:0; overflow-x:auto;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>종목</th>
+                            <th style="text-align:right">현재가</th>
+                            <th>신호</th>
+                            <th>신뢰도</th>
+                            <th>근거</th>
+                        </tr>
+                    </thead>
+                    <tbody id="signalsTable">
+                        <tr><td colspan="5" style="text-align:center; color:#546e7a;">"종목 분석" 버튼으로 시작</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- 매매 이력 & 로그 -->
+    <div class="grid-2">
+        <div class="card">
+            <div class="card-header">
+                매매 이력
+                <span id="tradeCount" style="font-size:12px; color:#4fc3f7;">0건</span>
+            </div>
+            <div class="card-body" style="padding:0; overflow-x:auto;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>종목</th>
+                            <th>구분</th>
+                            <th style="text-align:right">수량</th>
+                            <th>사유</th>
+                            <th>결과</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tradesTable">
+                        <tr><td colspan="5" style="text-align:center; color:#546e7a;">매매 내역 없음</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">활동 로그</div>
+            <div class="card-body">
+                <div class="log-area" id="logArea">
+                    <div class="log-line info">시스템 초기화 대기 중...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+const API = '';
+let autoRefreshId = null;
+
+// 유틸
+function fmt(n) {
+    if (n == null || isNaN(n)) return '--';
+    return Number(n).toLocaleString('ko-KR');
+}
+
+function addLog(msg, level = 'info') {
+    const area = document.getElementById('logArea');
+    const line = document.createElement('div');
+    line.className = `log-line ${level}`;
+    const now = new Date().toLocaleTimeString('ko-KR');
+    line.textContent = `[${now}] ${msg}`;
+    area.appendChild(line);
+    area.scrollTop = area.scrollHeight;
+    // 최대 100줄
+    while (area.children.length > 100) area.removeChild(area.firstChild);
+}
+
+// API 호출
+async function fetchJSON(url, opts = {}) {
+    try {
+        const res = await fetch(API + url, {
+            headers: { 'Content-Type': 'application/json' },
+            ...opts,
+        });
+        return await res.json();
+    } catch (e) {
+        addLog(`API 오류: ${e.message}`, 'error');
+        return null;
+    }
+}
+
+// 상태 업데이트
+async function refreshStatus() {
+    const data = await fetchJSON('/api/status');
+    if (!data) return;
+
+    // 모드
+    const badge = document.getElementById('modeBadge');
+    badge.textContent = data.mode || '--';
+    badge.className = 'mode-badge' + (data.mode === '실전투자' ? ' real' : '');
+
+    // 봇 상태
+    const dot = document.getElementById('statusDot');
+    const text = document.getElementById('statusText');
+    if (data.bot_running) {
+        dot.className = 'status-dot running';
+        text.textContent = '실행 중';
+        document.getElementById('btnStart').disabled = true;
+        document.getElementById('btnStop').disabled = false;
+    } else {
+        dot.className = 'status-dot';
+        text.textContent = '중지됨';
+        document.getElementById('btnStart').disabled = false;
+        document.getElementById('btnStop').disabled = true;
+    }
+
+    // 잔고
+    const b = data.balance || {};
+    document.getElementById('statCash').textContent = b.cash != null ? fmt(b.cash) + '원' : '--';
+    document.getElementById('statTotalEval').textContent = b.total_eval != null ? fmt(b.total_eval) + '원' : '--';
+
+    const profit = b.total_profit || 0;
+    const profitEl = document.getElementById('statProfit');
+    profitEl.textContent = (profit >= 0 ? '+' : '') + fmt(profit) + '원';
+    profitEl.className = 'value ' + (profit > 0 ? 'positive' : profit < 0 ? 'negative' : 'neutral');
+
+    const rate = b.total_profit_rate || 0;
+    const rateEl = document.getElementById('statProfitRate');
+    rateEl.textContent = (rate >= 0 ? '+' : '') + rate.toFixed(2) + '%';
+    rateEl.className = 'value ' + (rate > 0 ? 'positive' : rate < 0 ? 'negative' : 'neutral');
+
+    // 보유 종목
+    const holdings = b.holdings || [];
+    document.getElementById('holdingCount').textContent = holdings.length + '종목';
+    const htb = document.getElementById('holdingsTable');
+    if (holdings.length === 0) {
+        htb.innerHTML = '<tr><td colspan="5" style="text-align:center; color:#546e7a;">보유 종목 없음</td></tr>';
+    } else {
+        htb.innerHTML = holdings.map(h => {
+            const cls = h.profit_rate > 0 ? 'positive' : h.profit_rate < 0 ? 'negative' : 'neutral';
+            return `<tr>
+                <td><strong>${h.name || h.stock_code}</strong><br><span style="font-size:11px;color:#546e7a">${h.stock_code}</span></td>
+                <td style="text-align:right">${fmt(h.quantity)}</td>
+                <td style="text-align:right">${fmt(h.avg_price)}</td>
+                <td style="text-align:right">${fmt(h.current_price)}</td>
+                <td style="text-align:right" class="${cls}">${h.profit_rate >= 0 ? '+' : ''}${h.profit_rate.toFixed(2)}%</td>
+            </tr>`;
+        }).join('');
+    }
+}
+
+// 종목 분석
+async function runAnalysis() {
+    const btn = document.getElementById('btnAnalyze');
+    btn.disabled = true;
+    btn.textContent = '분석 중...';
+    addLog('종목 분석 시작...', 'info');
+
+    const data = await fetchJSON('/api/analyze', { method: 'POST' });
+    btn.disabled = false;
+    btn.textContent = '종목 분석';
+
+    if (!data || !data.signals) {
+        addLog('분석 실패', 'error');
+        return;
+    }
+
+    document.getElementById('signalTime').textContent = new Date().toLocaleString('ko-KR');
+    const stb = document.getElementById('signalsTable');
+    stb.innerHTML = data.signals.map(s => {
+        if (s.error) {
+            return `<tr><td>${s.stock_code}</td><td colspan="4" style="color:#ef5350">${s.error}</td></tr>`;
+        }
+        const barColor = s.signal.includes('BUY') ? '#ef5350' : s.signal.includes('SELL') ? '#42a5f5' : '#78909c';
+        const confPct = (s.confidence * 100).toFixed(0);
+        const changeClass = s.change_rate > 0 ? 'positive' : s.change_rate < 0 ? 'negative' : 'neutral';
+        // 짧은 이유 (첫 번째 파이프까지)
+        const shortReason = s.reason.length > 60 ? s.reason.substring(0, 60) + '...' : s.reason;
+        return `<tr>
+            <td>${s.stock_code}</td>
+            <td style="text-align:right">
+                ${fmt(s.price)}
+                <span class="${changeClass}" style="font-size:11px">(${s.change_rate >= 0 ? '+' : ''}${s.change_rate.toFixed(2)}%)</span>
+            </td>
+            <td><span class="signal-badge signal-${s.signal}">${s.signal.replace('_', ' ')}</span></td>
+            <td>
+                <div style="display:flex;align-items:center;gap:6px;">
+                    <div class="confidence-bar" style="width:60px"><div class="fill" style="width:${confPct}%;background:${barColor}"></div></div>
+                    <span style="font-size:11px">${confPct}%</span>
+                </div>
+            </td>
+            <td style="font-size:11px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${s.reason}">${shortReason}</td>
+        </tr>`;
+    }).join('');
+
+    addLog(`분석 완료: ${data.signals.length}종목`, 'info');
+}
+
+// 매매 이력
+async function refreshHistory() {
+    const data = await fetchJSON('/api/history');
+    if (!data) return;
+
+    const trades = data.trades || [];
+    document.getElementById('tradeCount').textContent = trades.length + '건';
+    const ttb = document.getElementById('tradesTable');
+    if (trades.length === 0) {
+        ttb.innerHTML = '<tr><td colspan="5" style="text-align:center; color:#546e7a;">매매 내역 없음</td></tr>';
+    } else {
+        ttb.innerHTML = trades.slice().reverse().slice(0, 20).map(t => {
+            const actionCls = t.action === 'buy' ? 'positive' : 'negative';
+            const actionText = t.action === 'buy' ? '매수' : '매도';
+            const resultText = t.result?.success ? '성공' : '실패';
+            const resultCls = t.result?.success ? 'trade' : 'error';
+            return `<tr>
+                <td>${t.stock_code}</td>
+                <td class="${actionCls}">${actionText}</td>
+                <td style="text-align:right">${fmt(t.quantity)}</td>
+                <td style="font-size:11px;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${t.reason}">${t.reason || '--'}</td>
+                <td style="color:${t.result?.success ? '#66bb6a' : '#ef5350'}">${resultText}</td>
+            </tr>`;
+        }).join('');
+    }
+}
+
+// 봇 제어
+async function startBot() {
+    const force = document.getElementById('chkForce').checked;
+    addLog(`봇 시작 요청 (강제: ${force})`, 'info');
+    const data = await fetchJSON('/api/start', {
+        method: 'POST',
+        body: JSON.stringify({ force }),
+    });
+    if (data?.message) addLog(data.message, 'trade');
+    setTimeout(refreshStatus, 1000);
+}
+
+async function stopBot() {
+    addLog('봇 중지 요청', 'warn');
+    const data = await fetchJSON('/api/stop', { method: 'POST' });
+    if (data?.message) addLog(data.message, 'warn');
+    setTimeout(refreshStatus, 2000);
+}
+
+async function runOnce() {
+    const btn = document.getElementById('btnOnce');
+    btn.disabled = true;
+    btn.textContent = '실행 중...';
+    addLog('1회 매매 사이클 실행...', 'info');
+
+    const data = await fetchJSON('/api/run-once', { method: 'POST' });
+    btn.disabled = false;
+    btn.textContent = '1회 매매';
+
+    if (data?.result) {
+        const cnt = data.result.orders_executed?.length || 0;
+        addLog(`매매 사이클 완료: ${cnt}건 주문`, cnt > 0 ? 'trade' : 'info');
+        if (data.result.errors?.length) {
+            data.result.errors.forEach(e => addLog(e, 'error'));
+        }
+    } else if (data?.error) {
+        addLog(`오류: ${data.error}`, 'error');
+    }
+    refreshAll();
+}
+
+function refreshAll() {
+    refreshStatus();
+    refreshHistory();
+}
+
+// 자동 새로고침 (10초)
+function startAutoRefresh() {
+    refreshAll();
+    autoRefreshId = setInterval(refreshAll, 10000);
+}
+
+// 초기화
+window.addEventListener('load', () => {
+    startAutoRefresh();
+    addLog('대시보드 초기화 완료', 'info');
+});
+</script>
+</body>
+</html>
