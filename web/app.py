@@ -8,7 +8,8 @@ import threading
 import time
 from datetime import datetime
 
-from flask import Flask, render_template, jsonify, request
+import requests as _requests
+from flask import Flask, render_template, jsonify, request, redirect
 
 from config.settings import AppConfig
 from core.trading_engine import TradingEngine
@@ -72,20 +73,41 @@ def index():
     return render_template("dashboard.html")
 
 
+@app.route("/status")
+def status_redirect():
+    """이전 경로 호환용 리다이렉트."""
+    return redirect("/api/status")
+
+
+_auth_error_logged = False
+
+
 @app.route("/api/status")
 def api_status():
     """봇 상태 및 포트폴리오 정보."""
+    global _auth_error_logged
     if not _engine:
         return jsonify({"error": "엔진 미초기화"}), 500
 
+    balance = {}
+    auth_ok = True
     try:
         balance = _engine.api.get_balance()
+        _auth_error_logged = False
+    except _requests.exceptions.HTTPError as e:
+        if e.response is not None and e.response.status_code == 403:
+            auth_ok = False
+            if not _auth_error_logged:
+                logger.error("API 인증 실패 (403) - .env 파일의 APP_KEY/APP_SECRET을 확인하세요")
+                _auth_error_logged = True
+        else:
+            logger.error("잔고 조회 실패: %s", e)
     except Exception as e:
-        balance = {}
         logger.error("잔고 조회 실패: %s", e)
 
     return jsonify({
         "bot_running": _bot_running,
+        "auth_ok": auth_ok,
         "timestamp": datetime.now().isoformat(),
         "strategy": _config.strategy.strategy if _config else "",
         "mode": "모의투자" if _config and _config.kis.is_virtual else "실전투자",

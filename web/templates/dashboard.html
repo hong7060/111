@@ -215,6 +215,12 @@
     </div>
 </div>
 
+<!-- 인증 오류 배너 -->
+<div id="authError" style="display:none; background:#b71c1c; color:#ffcdd2; padding:14px 30px; font-size:14px; border-bottom:1px solid #e53935;">
+    API 인증 실패 (403 Forbidden) - <code>.env</code> 파일의 <b>KIS_APP_KEY</b>와 <b>KIS_APP_SECRET</b>을 실제 값으로 변경하세요.
+    한국투자증권 → <a href="https://apiportal.koreainvestment.com" target="_blank" style="color:#fff; text-decoration:underline;">API 포털</a>에서 앱키를 확인할 수 있습니다.
+</div>
+
 <div class="container">
     <!-- 통계 카드 -->
     <div class="grid-3">
@@ -362,6 +368,9 @@ async function fetchJSON(url, opts = {}) {
 async function refreshStatus() {
     const data = await fetchJSON('/api/status');
     if (!data) return;
+
+    // 인증 오류 배너
+    document.getElementById('authError').style.display = data.auth_ok === false ? 'block' : 'none';
 
     // 모드
     const badge = document.getElementById('modeBadge');
