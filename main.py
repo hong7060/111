@@ -6,6 +6,7 @@
     python main.py --once       # 1회 실행 후 종료
     python main.py --status     # 포트폴리오 상태 확인
     python main.py --dry-run    # 분석만 수행 (주문 미실행)
+    python main.py --force      # 장 마감 시간에도 강제 실행
 """
 
 import argparse
@@ -50,10 +51,10 @@ def is_market_open() -> bool:
     return market_open <= now <= market_close
 
 
-def run_trading_cycle(engine: TradingEngine, dry_run: bool = False):
+def run_trading_cycle(engine: TradingEngine, dry_run: bool = False, force: bool = False):
     """매매 사이클을 실행한다."""
-    if not is_market_open():
-        logger.info("장 마감 상태 - 다음 장 개시까지 대기")
+    if not force and not is_market_open():
+        logger.info("장 마감 상태 - 다음 장 개시까지 대기 (--force 옵션으로 강제 실행 가능)")
         return
 
     if dry_run:
@@ -145,6 +146,7 @@ def main():
     parser.add_argument("--once", action="store_true", help="1회 실행 후 종료")
     parser.add_argument("--status", action="store_true", help="포트폴리오 상태 확인")
     parser.add_argument("--dry-run", action="store_true", help="분석만 수행 (주문 없음)")
+    parser.add_argument("--force", action="store_true", help="장 마감 시간에도 강제 실행")
     args = parser.parse_args()
 
     config = AppConfig()
@@ -167,7 +169,7 @@ def main():
         return
 
     if args.once:
-        run_trading_cycle(engine, dry_run=args.dry_run)
+        run_trading_cycle(engine, dry_run=args.dry_run, force=args.force)
         return
 
     # 스케줄 모드: 설정된 간격마다 실행
@@ -175,10 +177,10 @@ def main():
     signal.signal(signal.SIGTERM, _signal_handler)
 
     interval = config.strategy.rebalance_interval_minutes
-    schedule.every(interval).minutes.do(run_trading_cycle, engine=engine, dry_run=args.dry_run)
+    schedule.every(interval).minutes.do(run_trading_cycle, engine=engine, dry_run=args.dry_run, force=args.force)
 
     # 시작 시 1회 실행
-    run_trading_cycle(engine, dry_run=args.dry_run)
+    run_trading_cycle(engine, dry_run=args.dry_run, force=args.force)
 
     logger.info("스케줄 모드 실행 중 (%d분 간격). Ctrl+C로 종료.", interval)
     while _running:
